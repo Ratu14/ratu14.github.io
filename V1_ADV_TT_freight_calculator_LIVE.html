@@ -161,23 +161,11 @@
   .pc-sub { font-size: 11px; color: var(--text-light); margin-top: 4px; }
   .itag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--text-light); margin-bottom: 10px; }
 
-  .upload-bar {
-    display: flex; align-items: center; justify-content: flex-end;
-    gap: 12px; margin-top: 20px; padding: 16px 20px;
-    background: var(--white); border: 1px solid var(--border);
-    border-radius: 10px; box-shadow: var(--shadow);
-  }
-  .upload-btn {
-    display: flex; align-items: center; gap: 8px;
-    background: var(--green-dark); color: var(--white);
-    border: none; border-radius: 8px; padding: 10px 22px;
-    font-size: 13px; font-weight: 700; font-family: 'Inter', sans-serif;
-    cursor: pointer; letter-spacing: .3px;
-    transition: background .15s, box-shadow .15s;
-  }
-  .upload-btn:hover:not(:disabled) { background: var(--green-deep); box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
-  .upload-btn:disabled { background: var(--text-light); cursor: not-allowed; }
-  .upload-status { font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 6px; display: none; }
+  .upload-bar { display:flex; align-items:center; justify-content:flex-end; gap:12px; margin-top:20px; padding:16px 20px; background:var(--white); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
+  .upload-btn { display:flex; align-items:center; gap:8px; background:var(--green-dark); color:var(--white); border:none; border-radius:8px; padding:10px 22px; font-size:13px; font-weight:700; font-family:'Inter',sans-serif; cursor:pointer; transition:background .15s; }
+  .upload-btn:hover:not(:disabled) { background:var(--green-deep); }
+  .upload-btn:disabled { background:var(--text-light); cursor:not-allowed; }
+  .upload-status { font-size:12px; font-weight:600; padding:7px 14px; border-radius:6px; display:none; }
   .upload-status.success { display:block; background:var(--green-bg); color:var(--green-dark); border:1px solid var(--green-border); }
   .upload-status.error   { display:block; background:#fef2f2; color:var(--red); border:1px solid #fecaca; }
   .upload-status.loading { display:block; background:#f9fafb; color:var(--text-mid); border:1px solid var(--border); }
@@ -378,14 +366,11 @@
   </div>
 
 
-  <!-- UPLOAD TO ZOHO -->
   <div class="upload-bar">
     <div id="uploadStatus" class="upload-status"></div>
     <button class="upload-btn" onclick="uploadToZoho()" id="uploadBtn">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-        <polyline points="17 8 12 3 7 8"/>
-        <line x1="12" y1="3" x2="12" y2="15"/>
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
       </svg>
       Upload Data to Zoho
     </button>
@@ -472,7 +457,31 @@
     calc();
   }
 
-  // ── ZOHO CREATOR UPLOAD ──────────────────────────────────────
+  // ── ZOHO UPLOAD ──────────────────────────────────────────────
+  const ZC = {
+    refresh : '1000.2fcf78cae082781661aa0d1567e0b684.621176292a5d6e3c2eacf87e1e029bf9',
+    cid     : '1000.XB5IYRHC4REC89JV1KZWVBMBSY3NMX',
+    secret  : '9be9480d95efbdfe8f70bf8a5c93a4c6050ea35832',
+    owner   : 'thenpandiyan',
+    app     : 'transport',
+    form    : 'Freight_calculator_form',
+  };
+  let _tok = null, _tokExp = 0;
+
+  async function getZohoToken() {
+    if (_tok && Date.now() < _tokExp) return _tok;
+    // Use allorigins to proxy the token request
+    const target = 'https://accounts.zoho.in/oauth/v2/token';
+    const body   = `grant_type=refresh_token&client_id=${ZC.cid}&client_secret=${ZC.secret}&refresh_token=${ZC.refresh}`;
+    const proxy  = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(target + '?' + body);
+    const r      = await fetch(proxy);
+    const d      = await r.json();
+    if (!d.access_token) throw new Error('Token failed: ' + JSON.stringify(d));
+    _tok    = d.access_token;
+    _tokExp = Date.now() + ((d.expires_in || 3600) - 60) * 1000;
+    return _tok;
+  }
+
   async function uploadToZoho() {
     const loadPt   = document.getElementById('loadPt').value.trim();
     const unloadPt = document.getElementById('unloadPt').value.trim();
@@ -482,90 +491,57 @@
     const fRate    = g('freightRate'), monthly  = g('monthlySal');
     const kpd      = g('kmPerDay'), halt       = g('haltDays');
 
-    if (!loadPt || !unloadPt || !singleKm || !dieselRate || !mileage ||
-        !tollRate || !wayRate || !capacity || !fRate || !monthly || !kpd) {
-      setStatus('error', '\u26a0 Please fill in all fields before uploading.');
-      return;
+    if (!loadPt||!unloadPt||!singleKm||!dieselRate||!mileage||!tollRate||!wayRate||!capacity||!fRate||!monthly||!kpd) {
+      setStatus('error','\u26a0 Please fill in all fields.'); return;
     }
 
     const total     = singleKm * 2;
-    const diesel    = mileage > 0 ? (total / mileage) * dieselRate : 0;
+    const diesel    = mileage > 0 ? (total/mileage)*dieselRate : 0;
     const tollCost  = tollRate * total;
     const wayCost   = wayRate  * total;
-    const driveDays = kpd > 0 ? total / kpd : 0;
+    const driveDays = kpd > 0 ? total/kpd : 0;
     const tripDays  = driveDays + halt;
-    const perDay    = monthly / 30;
-    const driverSal = perDay * tripDays;
+    const driverSal = (monthly/30) * tripDays;
     const totalExp  = diesel + tollCost + wayCost + driverSal;
     const freight   = capacity * fRate * total;
     const profit    = freight - totalExp;
 
     const btn = document.getElementById('uploadBtn');
     btn.disabled = true;
-    setStatus('loading', '\u23f3 Uploading...');
-
-    const fields = {
-      'Load_Pt'       : loadPt,
-      'Unload_Pt'     : unloadPt,
-      'Single_KM'     : singleKm,
-      'Diesel_Rate'   : dieselRate,
-      'Mileage'       : mileage,
-      'Toll_Rate'     : tollRate,
-      'Way_Rate'      : wayRate,
-      'Capacity'      : capacity,
-      'Freight_Rate'  : fRate,
-      'Monthly_Salary': monthly,
-      'Km_Per_Day'    : kpd,
-      'Halt_Days'     : halt,
-      'Total_Expense' : Math.round(totalExp),
-      'Freight_Income': Math.round(freight),
-      'Net_Profit'    : Math.round(profit),
-    };
-
-    // Try the API v2 with refresh token first, fallback to form POST
-    const refreshToken = '1000.2fcf78cae082781661aa0d1567e0b684.621176292a5d6e3c2eacf87e1e029bf9';
-    const clientId     = '1000.XB5IYRHC4REC89JV1KZWVBMBSY3NMX';
-    const clientSecret = '9be9480d95efbdfe8f70bf8a5c93a4c6050ea35832';
+    setStatus('loading','\u23f3 Uploading...');
 
     try {
-      // Step 1: Get access token via proxy
-      let accessToken = null;
-      try {
-        const tokenResp = await fetch('https://cors.sh/https://accounts.zoho.in/oauth/v2/token', {
-          method : 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'x-cors-api-key': 'temp_' },
-          body   : new URLSearchParams({ grant_type:'refresh_token', client_id:clientId, client_secret:clientSecret, refresh_token:refreshToken })
-        });
-        const td = await tokenResp.json();
-        accessToken = td.access_token;
-      } catch(e) { /* fallback below */ }
+      const token   = await getZohoToken();
+      const apiUrl  = `https://creator.zoho.in/api/v2/${ZC.owner}/${ZC.app}/form/${ZC.form}`;
+      const proxied = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(apiUrl);
 
-      if (accessToken) {
-        // Step 2a: Use Zoho Creator API v2
-        const apiUrl = 'https://creator.zoho.in/api/v2/thenpandiyan/transport/form/Freight_calculator_form';
-        const resp = await fetch('https://cors.sh/' + apiUrl, {
-          method : 'POST',
-          headers: { 'Authorization': 'Zoho-oauthtoken ' + accessToken, 'Content-Type': 'application/json', 'x-cors-api-key': 'temp_' },
-          body   : JSON.stringify({ data: fields })
-        });
-        const result = await resp.json();
-        if (result.code === 3000) {
-          setStatus('success', '\u2705 Record saved! ID: ' + (result.data && result.data.ID || '\u2014'));
-          btn.disabled = false; return;
-        }
-      }
-
-      // Step 2b: Fallback — direct form POST (no-cors)
-      const body = new URLSearchParams(Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,String(v)])));
-      await fetch('https://creatorapp.zoho.in/thenpandiyan/transport/form-perma/Freight_calculator_form/', {
+      const resp = await fetch(proxied, {
         method : 'POST',
-        mode   : 'no-cors',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body   : body
+        headers: { 'Authorization':'Zoho-oauthtoken ' + token, 'Content-Type':'application/json' },
+        body   : JSON.stringify({ data: {
+          Load_Pt       : loadPt,       Unload_Pt    : unloadPt,
+          Single_KM     : singleKm,     Diesel_Rate  : dieselRate,
+          Mileage       : mileage,      Toll_Rate    : tollRate,
+          Way_Rate      : wayRate,      Capacity     : capacity,
+          Freight_Rate  : fRate,        Monthly_Salary: monthly,
+          Km_Per_Day    : kpd,          Halt_Days    : halt,
+          Total_Expense : Math.round(totalExp),
+          Freight_Income: Math.round(freight),
+          Net_Profit    : Math.round(profit),
+        }})
       });
-      setStatus('success', '\u2705 Sent! Open Zoho Creator to confirm the record was saved.');
+
+      const txt = await resp.text();
+      let result;
+      try { result = JSON.parse(txt); } catch(e) { throw new Error('Bad response: ' + txt.slice(0,100)); }
+
+      if (result.code === 3000) {
+        setStatus('success', '\u2705 Saved! Record ID: ' + (result.data && result.data.ID || '\u2014'));
+      } else {
+        throw new Error(result.message || JSON.stringify(result));
+      }
     } catch(err) {
-      setStatus('error', '\u274c Error: ' + err.message);
+      setStatus('error', '\u274c ' + err.message);
     } finally {
       btn.disabled = false;
     }
