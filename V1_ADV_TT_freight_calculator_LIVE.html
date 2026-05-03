@@ -177,10 +177,7 @@
   }
   .upload-btn:hover:not(:disabled) { background: var(--green-deep); box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
   .upload-btn:disabled { background: var(--text-light); cursor: not-allowed; }
-  .upload-status {
-    font-size: 12px; font-weight: 600; padding: 7px 14px;
-    border-radius: 6px; display: none;
-  }
+  .upload-status { font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 6px; display: none; }
   .upload-status.success { display:block; background:var(--green-bg); color:var(--green-dark); border:1px solid var(--green-border); }
   .upload-status.error   { display:block; background:#fef2f2; color:var(--red); border:1px solid #fecaca; }
   .upload-status.loading { display:block; background:#f9fafb; color:var(--text-mid); border:1px solid var(--border); }
@@ -393,6 +390,7 @@
       Upload Data to Zoho
     </button>
   </div>
+
 </div>
 
 <script>
@@ -474,39 +472,7 @@
     calc();
   }
 
-  // ── ZOHO CREATOR API ─────────────────────────────────────────
-  const ZOHO_CONFIG = {
-    accountOwner : 'thenpandiyan',
-    appLinkName  : 'transport',
-    formLinkName : 'Freight_Calc_Pro',        // new form name
-    clientId     : '1000.XB5IYRHC4REC89JV1KZWVBMBSY3NMX',
-    clientSecret : '9be9480d95efbdfe8f70bf8a5c93a4c6050ea35832',
-    refreshToken : '1000.2fcf78cae082781661aa0d1567e0b684.621176292a5d6e3c2eacf87e1e029bf9',      // ← paste your refresh token here
-  };
-
-  let _tok = null, _tokExp = 0;
-
-  async function getToken() {
-    if (_tok && Date.now() < _tokExp) return _tok;
-    // Use corsproxy.io to bypass CORS restriction on Zoho OAuth endpoint
-    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent('https://accounts.zoho.in/oauth/v2/token');
-    const r = await fetch(proxyUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: ZOHO_CONFIG.clientId,
-        client_secret: ZOHO_CONFIG.clientSecret,
-        refresh_token: ZOHO_CONFIG.refreshToken,
-      })
-    });
-    const d = await r.json();
-    if (!d.access_token) throw new Error('Token error: ' + JSON.stringify(d));
-    _tok = d.access_token;
-    _tokExp = Date.now() + (d.expires_in - 60) * 1000;
-    return _tok;
-  }
-
+  // ── ZOHO CREATOR UPLOAD ──────────────────────────────────────
   async function uploadToZoho() {
     const loadPt   = document.getElementById('loadPt').value.trim();
     const unloadPt = document.getElementById('unloadPt').value.trim();
@@ -518,75 +484,54 @@
 
     if (!loadPt || !unloadPt || !singleKm || !dieselRate || !mileage ||
         !tollRate || !wayRate || !capacity || !fRate || !monthly || !kpd) {
-      setStatus('error', '⚠ Please fill in all fields before uploading.');
+      setStatus('error', '\u26a0 Please fill in all fields before uploading.');
       return;
     }
 
-    const total      = singleKm * 2;
-    const diesel     = mileage > 0 ? (total / mileage) * dieselRate : 0;
-    const tollCost   = tollRate * total;
-    const wayCost    = wayRate  * total;
-    const driveDays  = kpd > 0 ? total / kpd : 0;
-    const tripDays   = driveDays + halt;
-    const perDay     = monthly / 30;
-    const driverSal  = perDay * tripDays;
-    const totalExp   = diesel + tollCost + wayCost + driverSal;
-    const freight    = capacity * fRate * total;
-    const profit     = freight - totalExp;
-    const margin     = freight > 0 ? profit / freight * 100 : 0;
+    const total     = singleKm * 2;
+    const diesel    = mileage > 0 ? (total / mileage) * dieselRate : 0;
+    const tollCost  = tollRate * total;
+    const wayCost   = wayRate  * total;
+    const driveDays = kpd > 0 ? total / kpd : 0;
+    const tripDays  = driveDays + halt;
+    const perDay    = monthly / 30;
+    const driverSal = perDay * tripDays;
+    const totalExp  = diesel + tollCost + wayCost + driverSal;
+    const freight   = capacity * fRate * total;
+    const profit    = freight - totalExp;
 
     const btn = document.getElementById('uploadBtn');
     btn.disabled = true;
-    setStatus('loading', '⏳ Uploading to Zoho Creator...');
+    setStatus('loading', '\u23f3 Uploading...');
+
+    const body = new URLSearchParams({
+      'Load_Pt'       : loadPt,
+      'Unload_Pt'     : unloadPt,
+      'Single_KM'     : singleKm,
+      'Diesel_Rate'   : dieselRate,
+      'Mileage'       : mileage,
+      'Toll_Rate'     : tollRate,
+      'Way_Rate'      : wayRate,
+      'Capacity'      : capacity,
+      'Freight_Rate'  : fRate,
+      'Monthly_Salary': monthly,
+      'Km_Per_Day'    : kpd,
+      'Halt_Days'     : halt,
+      'Total_Expense' : Math.round(totalExp),
+      'Freight_Income': Math.round(freight),
+      'Net_Profit'    : Math.round(profit),
+    });
 
     try {
-      const token = await getToken();
-      const payload = { data: {
-        Load_Pt       : loadPt,
-        Unload_Pt     : unloadPt,
-        Single_KM     : singleKm,
-        Total_KM      : total,
-        Diesel_Rate   : dieselRate,
-        Mileage       : mileage,
-        Toll_Rate     : tollRate,
-        Way_Rate      : wayRate,
-        Capacity      : capacity,
-        Freight_Rate  : fRate,
-        Monthly_Sal   : monthly,
-        Km_Per_Day    : kpd,
-        Halt_Days     : halt,
-        Diesel_Cost   : Math.round(diesel),
-        Toll_Cost     : Math.round(tollCost),
-        Way_Cost      : Math.round(wayCost),
-        Driver_Salary : Math.round(driverSal),
-        Total_Expense : Math.round(totalExp),
-        Freight_Income: Math.round(freight),
-        Net_Profit    : Math.round(profit),
-        Margin_Pct    : parseFloat(margin.toFixed(1)),
-        Drive_Days    : parseFloat(driveDays.toFixed(1)),
-        Trip_Days     : parseFloat(tripDays.toFixed(1)),
-      }};
-
-      const zohoUrl = 'https://creator.zoho.in/api/v2/' +
-                  ZOHO_CONFIG.accountOwner + '/' +
-                  ZOHO_CONFIG.appLinkName  + '/form/' +
-                  ZOHO_CONFIG.formLinkName;
-      const url = 'https://corsproxy.io/?' + encodeURIComponent(zohoUrl);
-
-      const resp = await fetch(url, {
+      await fetch('https://creatorapp.zoho.in/thenpandiyan/transport/form-perma/Freight_calculator_form/', {
         method : 'POST',
-        headers: { 'Authorization': 'Zoho-oauthtoken ' + token, 'Content-Type': 'application/json' },
-        body   : JSON.stringify(payload)
+        mode   : 'no-cors',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body   : body
       });
-      const result = await resp.json();
-
-      if (resp.ok && result.code === 3000) {
-        setStatus('success', '✅ Uploaded successfully! Record ID: ' + (result.data && result.data.ID || '—'));
-      } else {
-        throw new Error(result.message || JSON.stringify(result));
-      }
-    } catch (err) {
-      setStatus('error', '❌ Upload failed: ' + err.message);
+      setStatus('success', '\u2705 Sent! Check Zoho Creator to confirm the record was saved.');
+    } catch(err) {
+      setStatus('error', '\u274c Error: ' + err.message);
     } finally {
       btn.disabled = false;
     }
